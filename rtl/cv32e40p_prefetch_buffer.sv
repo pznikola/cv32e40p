@@ -25,8 +25,7 @@
 // this cycle already
 
 module cv32e40p_prefetch_buffer #(
-    parameter PULP_OBI = 0,  // Legacy PULP OBI behavior
-    parameter COREV_PULP = 1  // PULP ISA Extension (including PULP specific CSRs and hardware loop, excluding p.elw)
+    parameter PULP_OBI = 0  // Legacy PULP OBI behavior
 ) (
     input logic clk,
     input logic rst_n,
@@ -85,8 +84,7 @@ module cv32e40p_prefetch_buffer #(
 
   cv32e40p_prefetch_controller #(
       .DEPTH     (FIFO_DEPTH),
-      .PULP_OBI  (PULP_OBI),
-      .COREV_PULP(COREV_PULP)
+      .PULP_OBI  (PULP_OBI)
   ) prefetch_controller_i (
       .clk  (clk),
       .rst_n(rst_n),

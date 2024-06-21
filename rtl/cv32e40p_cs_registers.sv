@@ -39,8 +39,6 @@ module cv32e40p_cs_registers
     parameter USE_PMP          = 0,
     parameter N_PMP_ENTRIES    = 16,
     parameter NUM_MHPMCOUNTERS = 1,
-    parameter COREV_PULP       = 0,
-    parameter COREV_CLUSTER    = 0,
     parameter DEBUG_TRIGGER_EN = 1
 ) (
     // Clock and Reset
@@ -173,7 +171,6 @@ module cv32e40p_cs_registers
   | (0 << 13)  // N - User level interrupts supported
   | (0 << 18)  // S - Supervisor mode implemented
   | (32'(PULP_SECURE) << 20)  // U - User mode implemented
-  | (32'(COREV_PULP || COREV_CLUSTER) << 23)  // X - Non-standard extensions present
   | (32'(MXL) << 30);  // M-XLEN
 
   // This local parameter when set to 1 makes the Perf Counters not compliant with RISC-V
@@ -416,12 +413,12 @@ module cv32e40p_cs_registers
         csr_rdata_int = mhpmevent_q[csr_addr_i[4:0]];
 
         // hardware loops  (not official)
-        CSR_LPSTART0: csr_rdata_int = !COREV_PULP ? 'b0 : hwlp_start_i[0];
-        CSR_LPEND0:   csr_rdata_int = !COREV_PULP ? 'b0 : hwlp_end_i[0];
-        CSR_LPCOUNT0: csr_rdata_int = !COREV_PULP ? 'b0 : hwlp_cnt_i[0];
-        CSR_LPSTART1: csr_rdata_int = !COREV_PULP ? 'b0 : hwlp_start_i[1];
-        CSR_LPEND1:   csr_rdata_int = !COREV_PULP ? 'b0 : hwlp_end_i[1];
-        CSR_LPCOUNT1: csr_rdata_int = !COREV_PULP ? 'b0 : hwlp_cnt_i[1];
+        CSR_LPSTART0: csr_rdata_int = 'b0;
+        CSR_LPEND0:   csr_rdata_int = 'b0;
+        CSR_LPCOUNT0: csr_rdata_int = 'b0;
+        CSR_LPSTART1: csr_rdata_int = 'b0;
+        CSR_LPEND1:   csr_rdata_int = 'b0;
+        CSR_LPCOUNT1: csr_rdata_int = 'b0;
 
         // PMP config registers
         CSR_PMPCFG0: csr_rdata_int = USE_PMP ? pmp_reg_q.pmpcfg_packed[0] : '0;
@@ -441,14 +438,14 @@ module cv32e40p_cs_registers
         // utvec: user trap-handler base address
         CSR_UTVEC: csr_rdata_int = {utvec_q, 6'h0, utvec_mode_q};
         // duplicated mhartid: unique hardware thread id (not official)
-        CSR_UHARTID: csr_rdata_int = !COREV_PULP ? 'b0 : hart_id_i;
+        CSR_UHARTID: csr_rdata_int = 'b0;
         // uepc: exception program counter
         CSR_UEPC: csr_rdata_int = uepc_q;
         // ucause: exception cause
         CSR_UCAUSE: csr_rdata_int = {ucause_q[5], 26'h0, ucause_q[4:0]};
 
         // current priv level (not official)
-        CSR_PRIVLV: csr_rdata_int = !COREV_PULP ? 'b0 : {30'h0, priv_lvl_q};
+        CSR_PRIVLV: csr_rdata_int = 'b0;
 
         default: csr_rdata_int = '0;
       endcase
@@ -509,7 +506,7 @@ module cv32e40p_cs_registers
 
         // mimpid, Machine Implementation ID
         CSR_MIMPID: begin
-          csr_rdata_int = (FPU == 1 || COREV_PULP == 1 || COREV_CLUSTER == 1) ? 32'h1 : 'b0;
+          csr_rdata_int = (FPU == 1) ? 32'h1 : 'b0;
         end
 
         // unimplemented, read 0 CSRs
@@ -583,18 +580,18 @@ module cv32e40p_cs_registers
         csr_rdata_int = mhpmevent_q[csr_addr_i[4:0]];
 
         // hardware loops  (not official)
-        CSR_LPSTART0: csr_rdata_int = !COREV_PULP ? 'b0 : hwlp_start_i[0];
-        CSR_LPEND0:   csr_rdata_int = !COREV_PULP ? 'b0 : hwlp_end_i[0];
-        CSR_LPCOUNT0: csr_rdata_int = !COREV_PULP ? 'b0 : hwlp_cnt_i[0];
-        CSR_LPSTART1: csr_rdata_int = !COREV_PULP ? 'b0 : hwlp_start_i[1];
-        CSR_LPEND1:   csr_rdata_int = !COREV_PULP ? 'b0 : hwlp_end_i[1];
-        CSR_LPCOUNT1: csr_rdata_int = !COREV_PULP ? 'b0 : hwlp_cnt_i[1];
+        CSR_LPSTART0: csr_rdata_int = 'b0;
+        CSR_LPEND0:   csr_rdata_int = 'b0;
+        CSR_LPCOUNT0: csr_rdata_int = 'b0;
+        CSR_LPSTART1: csr_rdata_int = 'b0;
+        CSR_LPEND1:   csr_rdata_int = 'b0;
+        CSR_LPCOUNT1: csr_rdata_int = 'b0;
 
         /* USER CSR */
         // dublicated mhartid: unique hardware thread id (not official)
-        CSR_UHARTID: csr_rdata_int = !COREV_PULP ? 'b0 : hart_id_i;
+        CSR_UHARTID: csr_rdata_int = 'b0;
         // current priv level (not official)
-        CSR_PRIVLV: csr_rdata_int = !COREV_PULP ? 'b0 : {30'h0, priv_lvl_q};
+        CSR_PRIVLV: csr_rdata_int ='b0;
         // Zfinx (not official)
         CSR_ZFINX: csr_rdata_int = (FPU == 1 && ZFINX == 1) ? 32'h1 : 32'h0;
         default: csr_rdata_int = '0;
@@ -1335,7 +1332,7 @@ module cv32e40p_cs_registers
   assign hpm_events[8] = mhpmevent_branch_i;  // nr of branches (conditional)
   assign hpm_events[9] = mhpmevent_branch_taken_i;  // nr of taken branches (conditional)
   assign hpm_events[10] = mhpmevent_compressed_i;  // compressed instruction counter
-  assign hpm_events[11] = COREV_CLUSTER ? mhpmevent_pipe_stall_i : 1'b0;  // extra cycles from ELW
+  assign hpm_events[11] = 1'b0;  // extra cycles from ELW
   assign hpm_events[12] = !APU ? 1'b0 : apu_typeconflict_i && !apu_dep_i;
   assign hpm_events[13] = !APU ? 1'b0 : apu_contention_i;
   assign hpm_events[14] = !APU ? 1'b0 : apu_dep_i && !apu_contention_i;

@@ -24,8 +24,6 @@
 /////////////////////////////////////////////////////////////////////////////
 
 module cv32e40p_top #(
-    parameter COREV_PULP = 0, // PULP ISA Extension (incl. custom CSRs and hardware loop, excl. cv.elw)
-    parameter COREV_CLUSTER = 0,  // PULP Cluster interface (incl. cv.elw)
     parameter FPU = 0,  // Floating Point Unit (interfaced via APU interface)
     parameter FPU_ADDMUL_LAT = 0,  // Floating-Point ADDition/MULtiplication computing lane pipeline registers number
     parameter FPU_OTHERS_LAT = 0,  // Floating-Point COMParison/CONVersion computing lanes pipeline registers number
@@ -36,7 +34,6 @@ module cv32e40p_top #(
     input logic clk_i,
     input logic rst_ni,
 
-    input logic pulp_clock_en_i,  // PULP clock enable (only used if COREV_CLUSTER = 1)
     input logic scan_cg_en_i,  // Enable all clock gates for testing
 
     // Core ID, Cluster ID, debug mode halt address and boot address are considered more or less static
@@ -98,8 +95,6 @@ module cv32e40p_top #(
 
   // Instantiate the Core
   cv32e40p_core #(
-      .COREV_PULP      (COREV_PULP),
-      .COREV_CLUSTER   (COREV_CLUSTER),
       .FPU             (FPU),
       .FPU_ADDMUL_LAT  (FPU_ADDMUL_LAT),
       .FPU_OTHERS_LAT  (FPU_OTHERS_LAT),
@@ -109,7 +104,6 @@ module cv32e40p_top #(
       .clk_i (clk_i),
       .rst_ni(rst_ni),
 
-      .pulp_clock_en_i(pulp_clock_en_i),
       .scan_cg_en_i   (scan_cg_en_i),
 
       .boot_addr_i        (boot_addr_i),

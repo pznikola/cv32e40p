@@ -33,7 +33,6 @@ module cv32e40p_ex_stage
   import cv32e40p_pkg::*;
   import cv32e40p_apu_core_pkg::*;
 #(
-    parameter COREV_PULP       = 0,
     parameter FPU              = 0,
     parameter APU_NARGS_CPU    = 3,
     parameter APU_WOP_CPU      = 6,
@@ -213,9 +212,7 @@ module cv32e40p_ex_stage
       end
     end else begin
       regfile_alu_we_fw_o = regfile_alu_we_i & ~apu_en_i;
-      regfile_alu_we_fw_power_o = (COREV_PULP == 0) ? regfile_alu_we_i & ~apu_en_i : 
-                                                     regfile_alu_we_i & ~apu_en_i &
-                                                     mult_ready & alu_ready & lsu_ready_ex_i;
+      regfile_alu_we_fw_power_o = regfile_alu_we_i & ~apu_en_i;
       regfile_alu_waddr_fw_o = regfile_alu_waddr_i;
       if (alu_en_i) regfile_alu_wdata_fw_o = alu_result;
       if (mult_en_i) regfile_alu_wdata_fw_o = mult_result;
@@ -233,7 +230,7 @@ module cv32e40p_ex_stage
 
     if (regfile_we_lsu) begin
       regfile_we_wb_o       = 1'b1;
-      regfile_we_wb_power_o = (COREV_PULP == 0) ? 1'b1 : ~data_misaligned_ex_i & wb_ready_i;
+      regfile_we_wb_power_o = 1'b1;
       if (apu_valid & (!apu_singlecycle & !apu_multicycle)) begin
         wb_contention_lsu = 1'b1;
       end

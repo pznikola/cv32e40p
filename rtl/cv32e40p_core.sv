@@ -31,8 +31,6 @@
 module cv32e40p_core
   import cv32e40p_apu_core_pkg::*;
 #(
-    parameter COREV_PULP =  0,  // PULP ISA Extension (incl. custom CSRs and hardware loop, excl. cv.elw)
-    parameter COREV_CLUSTER = 0,  // PULP Cluster interface (incl. cv.elw)
     parameter FPU = 0,  // Floating Point Unit (interfaced via APU interface)
     parameter FPU_ADDMUL_LAT = 0,  // Floating-Point ADDition/MULtiplication lane pipeline registers number
     parameter FPU_OTHERS_LAT = 0,  // Floating-Point COMParison/CONVersion lanes pipeline registers number
@@ -43,7 +41,6 @@ module cv32e40p_core
     input logic clk_i,
     input logic rst_ni,
 
-    input logic pulp_clock_en_i,  // PULP clock enable (only used if COREV_CLUSTER = 1)
     input logic scan_cg_en_i,  // Enable all clock gates for testing
 
     // Core ID, Cluster ID, debug mode halt address and boot address are considered more or less static
@@ -379,9 +376,7 @@ module cv32e40p_core
   logic clk;
   logic fetch_enable;
 
-  cv32e40p_sleep_unit #(
-      .COREV_CLUSTER(COREV_CLUSTER)
-  ) sleep_unit_i (
+  cv32e40p_sleep_unit  sleep_unit_i (
       // Clock, reset interface
       .clk_ungated_i(clk_i),  // Ungated clock
       .rst_n        (rst_ni),
@@ -401,12 +396,6 @@ module cv32e40p_core
       .lsu_busy_i (lsu_busy),
       .apu_busy_i (apu_busy_o),
 
-      // PULP cluster
-      .pulp_clock_en_i       (pulp_clock_en_i),
-      .p_elw_start_i         (p_elw_start),
-      .p_elw_finish_i        (p_elw_finish),
-      .debug_p_elw_no_sleep_i(debug_p_elw_no_sleep),
-
       // WFI wake
       .wake_from_sleep_i(wake_from_sleep)
   );
@@ -421,7 +410,6 @@ module cv32e40p_core
   //                                              //
   //////////////////////////////////////////////////
   cv32e40p_if_stage #(
-      .COREV_PULP (COREV_PULP),
       .PULP_OBI   (PULP_OBI),
       .PULP_SECURE(PULP_SECURE),
       .FPU        (FPU),
@@ -510,8 +498,6 @@ module cv32e40p_core
   //                                             //
   /////////////////////////////////////////////////
   cv32e40p_id_stage #(
-      .COREV_PULP      (COREV_PULP),
-      .COREV_CLUSTER   (COREV_CLUSTER),
       .N_HWLP          (N_HWLP),
       .PULP_SECURE     (PULP_SECURE),
       .USE_PMP         (USE_PMP),
@@ -744,7 +730,6 @@ module cv32e40p_core
   //                                                 //
   /////////////////////////////////////////////////////
   cv32e40p_ex_stage #(
-      .COREV_PULP      (COREV_PULP),
       .FPU             (FPU),
       .APU_NARGS_CPU   (APU_NARGS_CPU),
       .APU_WOP_CPU     (APU_WOP_CPU),
@@ -955,8 +940,6 @@ module cv32e40p_core
       .USE_PMP         (USE_PMP),
       .N_PMP_ENTRIES   (N_PMP_ENTRIES),
       .NUM_MHPMCOUNTERS(NUM_MHPMCOUNTERS),
-      .COREV_PULP      (COREV_PULP),
-      .COREV_CLUSTER   (COREV_CLUSTER),
       .DEBUG_TRIGGER_EN(DEBUG_TRIGGER_EN)
   ) cs_registers_i (
       .clk  (clk),
@@ -1120,160 +1103,123 @@ module cv32e40p_core
 `ifdef CV32E40P_ASSERT_ON
 
   //----------------------------------------------------------------------------
-  // Assumptions
-  //----------------------------------------------------------------------------
-
-  generate
-    if (COREV_CLUSTER) begin : gen_pulp_cluster_assumptions
-
-      // Assumptions/requirements on the environment when pulp_clock_en_i = 0
-      property p_env_req_0;
-        @(posedge clk_i) disable iff (!rst_ni) (pulp_clock_en_i == 1'b0) |-> (irq_i == 'b0) && (debug_req_i == 1'b0) &&
-                                                                            (instr_rvalid_i == 1'b0) && (instr_gnt_i == 1'b0) &&
-                                                                            (data_rvalid_i == 1'b0) && (data_gnt_i == 1'b0);
-      endproperty
-
-      a_env_req_0 :
-      assume property (p_env_req_0);
-
-      // Assumptions/requirements on the environment when core_sleep_o = 0
-      property p_env_req_1;
-        @(posedge clk_i) disable iff (!rst_ni) (core_sleep_o == 1'b0) |-> (pulp_clock_en_i == 1'b1);
-      endproperty
-
-      a_env_req_1 :
-      assume property (p_env_req_1);
-
-    end
-  endgenerate
-
-  //----------------------------------------------------------------------------
   // Assertions
   //----------------------------------------------------------------------------
 
-  generate
-    if (!COREV_CLUSTER) begin : gen_no_pulp_cluster_assertions
-      // Check that a taken IRQ is actually enabled (e.g. that we do not react to an IRQ that was just disabled in MIE)
-      property p_irq_enabled_0;
-        @(posedge clk) disable iff (!rst_ni) (pc_set && (pc_mux_id == PC_EXCEPTION) && (exc_pc_mux_id == EXC_PC_IRQ)) |->
-         (cs_registers_i.mie_n[exc_cause] && cs_registers_i.mstatus_q.mie);
-      endproperty
+  // Check that a taken IRQ is actually enabled (e.g. that we do not react to an IRQ that was just disabled in MIE)
+  property p_irq_enabled_0;
+    @(posedge clk) disable iff (!rst_ni) (pc_set && (pc_mux_id == PC_EXCEPTION) && (exc_pc_mux_id == EXC_PC_IRQ)) |->
+      (cs_registers_i.mie_n[exc_cause] && cs_registers_i.mstatus_q.mie);
+  endproperty
 
-      a_irq_enabled_0 :
-      assert property (p_irq_enabled_0);
+  a_irq_enabled_0 :
+  assert property (p_irq_enabled_0);
 
-      // Check that a taken IRQ was for an enabled cause and that mstatus.mie gets disabled
-      property p_irq_enabled_1;
-        @(posedge clk) disable iff (!rst_ni) (pc_set && (pc_mux_id == PC_EXCEPTION) && (exc_pc_mux_id == EXC_PC_IRQ)) |=>
-         (cs_registers_i.mcause_q[5] && cs_registers_i.mie_q[cs_registers_i.mcause_q[4:0]] && !cs_registers_i.mstatus_q.mie);
-      endproperty
+  // Check that a taken IRQ was for an enabled cause and that mstatus.mie gets disabled
+  property p_irq_enabled_1;
+    @(posedge clk) disable iff (!rst_ni) (pc_set && (pc_mux_id == PC_EXCEPTION) && (exc_pc_mux_id == EXC_PC_IRQ)) |=>
+      (cs_registers_i.mcause_q[5] && cs_registers_i.mie_q[cs_registers_i.mcause_q[4:0]] && !cs_registers_i.mstatus_q.mie);
+  endproperty
 
-      a_irq_enabled_1 :
-      assert property (p_irq_enabled_1);
-    end
-  endgenerate
+  a_irq_enabled_1 :
+  assert property (p_irq_enabled_1);
 
-  generate
-    if (!COREV_PULP) begin : gen_no_pulp_xpulp_assertions
 
-      // Illegal, ECALL, EBRK checks excluded for PULP due to other definition for for Hardware Loop
+  // Illegal, ECALL, EBRK checks excluded for PULP due to other definition for for Hardware Loop
 
-      // First illegal instruction decoded
-      logic        first_illegal_found;
-      logic        first_ecall_found;
-      logic        first_ebrk_found;
-      logic [31:0] expected_illegal_mepc;
-      logic [31:0] expected_ecall_mepc;
-      logic [31:0] expected_ebrk_mepc;
+  // First illegal instruction decoded
+  logic        first_illegal_found;
+  logic        first_ecall_found;
+  logic        first_ebrk_found;
+  logic [31:0] expected_illegal_mepc;
+  logic [31:0] expected_ecall_mepc;
+  logic [31:0] expected_ebrk_mepc;
 
-      always_ff @(posedge clk, negedge rst_ni) begin
-        if (rst_ni == 1'b0) begin
-          first_illegal_found   <= 1'b0;
-          first_ecall_found     <= 1'b0;
-          first_ebrk_found      <= 1'b0;
-          expected_illegal_mepc <= 32'b0;
-          expected_ecall_mepc   <= 32'b0;
-          expected_ebrk_mepc    <= 32'b0;
-        end else begin
-          if (!first_illegal_found && is_decoding && id_valid && id_stage_i.illegal_insn_dec && !id_stage_i.controller_i.debug_mode_n) begin
-            first_illegal_found   <= 1'b1;
-            expected_illegal_mepc <= pc_id;
-          end
-          if (!first_ecall_found && is_decoding && id_valid && id_stage_i.ecall_insn_dec && !id_stage_i.controller_i.debug_mode_n) begin
-            first_ecall_found   <= 1'b1;
-            expected_ecall_mepc <= pc_id;
-          end
-          if (!first_ebrk_found && is_decoding && id_valid && id_stage_i.ebrk_insn_dec && (id_stage_i.controller_i.ctrl_fsm_ns != DBG_FLUSH)) begin
-            first_ebrk_found   <= 1'b1;
-            expected_ebrk_mepc <= pc_id;
-          end
-        end
+  always_ff @(posedge clk, negedge rst_ni) begin
+    if (rst_ni == 1'b0) begin
+      first_illegal_found   <= 1'b0;
+      first_ecall_found     <= 1'b0;
+      first_ebrk_found      <= 1'b0;
+      expected_illegal_mepc <= 32'b0;
+      expected_ecall_mepc   <= 32'b0;
+      expected_ebrk_mepc    <= 32'b0;
+    end else begin
+      if (!first_illegal_found && is_decoding && id_valid && id_stage_i.illegal_insn_dec && !id_stage_i.controller_i.debug_mode_n) begin
+        first_illegal_found   <= 1'b1;
+        expected_illegal_mepc <= pc_id;
       end
-
-      // First mepc write for illegal instruction exception
-      logic        first_cause_illegal_found;
-      logic        first_cause_ecall_found;
-      logic        first_cause_ebrk_found;
-      logic [31:0] actual_illegal_mepc;
-      logic [31:0] actual_ecall_mepc;
-      logic [31:0] actual_ebrk_mepc;
-
-      always_ff @(posedge clk, negedge rst_ni) begin
-        if (rst_ni == 1'b0) begin
-          first_cause_illegal_found <= 1'b0;
-          first_cause_ecall_found   <= 1'b0;
-          first_cause_ebrk_found    <= 1'b0;
-          actual_illegal_mepc       <= 32'b0;
-          actual_ecall_mepc         <= 32'b0;
-          actual_ebrk_mepc          <= 32'b0;
-        end else begin
-          if (!first_cause_illegal_found && (cs_registers_i.csr_cause_i == {
-                1'b0, EXC_CAUSE_ILLEGAL_INSN
-              }) && csr_save_cause) begin
-            first_cause_illegal_found <= 1'b1;
-            actual_illegal_mepc       <= cs_registers_i.mepc_n;
-          end
-          if (!first_cause_ecall_found && (cs_registers_i.csr_cause_i == {
-                1'b0, EXC_CAUSE_ECALL_MMODE
-              }) && csr_save_cause) begin
-            first_cause_ecall_found <= 1'b1;
-            actual_ecall_mepc       <= cs_registers_i.mepc_n;
-          end
-          if (!first_cause_ebrk_found && (cs_registers_i.csr_cause_i == {
-                1'b0, EXC_CAUSE_BREAKPOINT
-              }) && csr_save_cause) begin
-            first_cause_ebrk_found <= 1'b1;
-            actual_ebrk_mepc       <= cs_registers_i.mepc_n;
-          end
-        end
+      if (!first_ecall_found && is_decoding && id_valid && id_stage_i.ecall_insn_dec && !id_stage_i.controller_i.debug_mode_n) begin
+        first_ecall_found   <= 1'b1;
+        expected_ecall_mepc <= pc_id;
       end
-
-      // Check that mepc is updated with PC of illegal instruction
-      property p_illegal_mepc;
-        @(posedge clk) disable iff (!rst_ni) (first_illegal_found && first_cause_illegal_found) |=> (expected_illegal_mepc == actual_illegal_mepc);
-      endproperty
-
-      a_illegal_mepc :
-      assert property (p_illegal_mepc);
-
-      // Check that mepc is updated with PC of the ECALL instruction
-      property p_ecall_mepc;
-        @(posedge clk) disable iff (!rst_ni) (first_ecall_found && first_cause_ecall_found) |=> (expected_ecall_mepc == actual_ecall_mepc);
-      endproperty
-
-      a_ecall_mepc :
-      assert property (p_ecall_mepc);
-
-      // Check that mepc is updated with PC of EBRK instruction
-      property p_ebrk_mepc;
-        @(posedge clk) disable iff (!rst_ni) (first_ebrk_found && first_cause_ebrk_found) |=> (expected_ebrk_mepc == actual_ebrk_mepc);
-      endproperty
-
-      a_ebrk_mepc :
-      assert property (p_ebrk_mepc);
-
+      if (!first_ebrk_found && is_decoding && id_valid && id_stage_i.ebrk_insn_dec && (id_stage_i.controller_i.ctrl_fsm_ns != DBG_FLUSH)) begin
+        first_ebrk_found   <= 1'b1;
+        expected_ebrk_mepc <= pc_id;
+      end
     end
-  endgenerate
+  end
+
+  // First mepc write for illegal instruction exception
+  logic        first_cause_illegal_found;
+  logic        first_cause_ecall_found;
+  logic        first_cause_ebrk_found;
+  logic [31:0] actual_illegal_mepc;
+  logic [31:0] actual_ecall_mepc;
+  logic [31:0] actual_ebrk_mepc;
+
+  always_ff @(posedge clk, negedge rst_ni) begin
+    if (rst_ni == 1'b0) begin
+      first_cause_illegal_found <= 1'b0;
+      first_cause_ecall_found   <= 1'b0;
+      first_cause_ebrk_found    <= 1'b0;
+      actual_illegal_mepc       <= 32'b0;
+      actual_ecall_mepc         <= 32'b0;
+      actual_ebrk_mepc          <= 32'b0;
+    end else begin
+      if (!first_cause_illegal_found && (cs_registers_i.csr_cause_i == {
+            1'b0, EXC_CAUSE_ILLEGAL_INSN
+          }) && csr_save_cause) begin
+        first_cause_illegal_found <= 1'b1;
+        actual_illegal_mepc       <= cs_registers_i.mepc_n;
+      end
+      if (!first_cause_ecall_found && (cs_registers_i.csr_cause_i == {
+            1'b0, EXC_CAUSE_ECALL_MMODE
+          }) && csr_save_cause) begin
+        first_cause_ecall_found <= 1'b1;
+        actual_ecall_mepc       <= cs_registers_i.mepc_n;
+      end
+      if (!first_cause_ebrk_found && (cs_registers_i.csr_cause_i == {
+            1'b0, EXC_CAUSE_BREAKPOINT
+          }) && csr_save_cause) begin
+        first_cause_ebrk_found <= 1'b1;
+        actual_ebrk_mepc       <= cs_registers_i.mepc_n;
+      end
+    end
+  end
+
+  // Check that mepc is updated with PC of illegal instruction
+  property p_illegal_mepc;
+    @(posedge clk) disable iff (!rst_ni) (first_illegal_found && first_cause_illegal_found) |=> (expected_illegal_mepc == actual_illegal_mepc);
+  endproperty
+
+  a_illegal_mepc :
+  assert property (p_illegal_mepc);
+
+  // Check that mepc is updated with PC of the ECALL instruction
+  property p_ecall_mepc;
+    @(posedge clk) disable iff (!rst_ni) (first_ecall_found && first_cause_ecall_found) |=> (expected_ecall_mepc == actual_ecall_mepc);
+  endproperty
+
+  a_ecall_mepc :
+  assert property (p_ecall_mepc);
+
+  // Check that mepc is updated with PC of EBRK instruction
+  property p_ebrk_mepc;
+    @(posedge clk) disable iff (!rst_ni) (first_ebrk_found && first_cause_ebrk_found) |=> (expected_ebrk_mepc == actual_ebrk_mepc);
+  endproperty
+
+  a_ebrk_mepc :
+  assert property (p_ebrk_mepc);
 
   // Single Step only decodes one instruction in non debug mode and next instruction decode is in debug mode
   logic inst_taken;

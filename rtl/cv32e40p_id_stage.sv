@@ -31,8 +31,6 @@ module cv32e40p_id_stage
   import cv32e40p_pkg::*;
   import cv32e40p_apu_core_pkg::*;
 #(
-    parameter COREV_PULP =  1,  // PULP ISA Extension (including PULP specific CSRs and hardware loop, excluding cv.elw)
-    parameter COREV_CLUSTER = 0,
     parameter N_HWLP = 2,
     parameter N_HWLP_BITS = $clog2(N_HWLP),
     parameter PULP_SECURE = 0,
@@ -773,13 +771,7 @@ module cv32e40p_id_stage
     endcase
   end
 
-  generate
-    if (!COREV_PULP) begin
-      assign imm_vec_ext_id = imm_vu_type[1:0];
-    end else begin
-      assign imm_vec_ext_id = (alu_vec) ? imm_vu_type[1:0] : 2'b0;
-    end
-  endgenerate
+  assign imm_vec_ext_id = imm_vu_type[1:0];
 
   always_comb begin
     unique case (mult_imm_mux)
@@ -973,8 +965,6 @@ module cv32e40p_id_stage
   ///////////////////////////////////////////////
 
   cv32e40p_decoder #(
-      .COREV_PULP      (COREV_PULP),
-      .COREV_CLUSTER   (COREV_CLUSTER),
       .A_EXTENSION     (A_EXTENSION),
       .FPU             (FPU),
       .FPU_ADDMUL_LAT  (FPU_ADDMUL_LAT),
@@ -1112,8 +1102,6 @@ module cv32e40p_id_stage
   ////////////////////////////////////////////////////////////////////
 
   cv32e40p_controller #(
-      .COREV_CLUSTER(COREV_CLUSTER),
-      .COREV_PULP   (COREV_PULP),
       .FPU          (FPU)
   ) controller_i (
       .clk          (clk),  // Gated clock
@@ -1317,101 +1305,16 @@ module cv32e40p_id_stage
       .current_priv_lvl_i(current_priv_lvl_i)
   );
 
-  generate
-    if (COREV_PULP) begin : gen_hwloop_regs
 
-      ///////////////////////////////////////////////
-      //  _   ___        ___     ___   ___  ____   //
-      // | | | \ \      / / |   / _ \ / _ \|  _ \  //
-      // | |_| |\ \ /\ / /| |  | | | | | | | |_) | //
-      // |  _  | \ V  V / | |__| |_| | |_| |  __/  //
-      // |_| |_|  \_/\_/  |_____\___/ \___/|_|     //
-      //                                           //
-      ///////////////////////////////////////////////
-
-
-      cv32e40p_hwloop_regs #(
-          .N_REGS(N_HWLP)
-      ) hwloop_regs_i (
-          .clk  (clk),
-          .rst_n(rst_n),
-
-          // from ID
-          .hwlp_start_data_i(hwlp_start),
-          .hwlp_end_data_i  (hwlp_end),
-          .hwlp_cnt_data_i  (hwlp_cnt),
-          .hwlp_we_i        (hwlp_we_masked),
-          .hwlp_regid_i     (hwlp_regid),
-
-          // from controller
-          .valid_i(hwlp_valid),
-
-          // to hwloop controller
-          .hwlp_start_addr_o(hwlp_start_o),
-          .hwlp_end_addr_o  (hwlp_end_o),
-          .hwlp_counter_o   (hwlp_cnt_o),
-
-          // from hwloop controller
-          .hwlp_dec_cnt_i(hwlp_dec_cnt)
-      );
-
-      assign hwlp_valid = instr_valid_i & clear_instr_valid_o;
-
-      // hwloop register id
-      assign hwlp_regid = instr[7];  // rd contains hwloop register id
-
-      // hwloop target mux
-      always_comb begin
-        case (hwlp_target_mux_sel)
-          2'b00:   hwlp_end = pc_id_i + {imm_iz_type[29:0], 2'b0};
-          2'b01:   hwlp_end = pc_id_i + {imm_z_type[29:0], 2'b0};
-          2'b10:   hwlp_end = operand_a_fw_id;
-          default: hwlp_end = operand_a_fw_id;
-        endcase
-      end
-
-      // hwloop start mux
-      always_comb begin
-        case (hwlp_start_mux_sel)
-          2'b00:   hwlp_start = hwlp_end;  // for PC + I imm
-          2'b01:   hwlp_start = pc_id_i + 4;  // for next PC
-          2'b10:   hwlp_start = operand_a_fw_id;
-          default: hwlp_start = operand_a_fw_id;
-        endcase
-      end
-
-      // hwloop cnt mux
-      always_comb begin : hwlp_cnt_mux
-        case (hwlp_cnt_mux_sel)
-          1'b0: hwlp_cnt = imm_iz_type;
-          1'b1: hwlp_cnt = operand_a_fw_id;
-        endcase
-        ;
-      end
-
-      /*
-        when hwlp_mask is 1, the controller is about to take an interrupt
-        the xEPC is going to have the hwloop instruction PC, therefore, do not update the
-        hwloop registers to make clear that the instruction hasn't been executed.
-        Although it may not be a HW bugs causing uninteded behaviours,
-        it helps verifications processes when checking the hwloop regs
-      */
-      assign hwlp_we_masked = hwlp_we & ~{3{hwlp_mask}} & {3{id_ready_o}};
-
-    end else begin : gen_no_hwloop_regs
-
-      assign hwlp_start_o   = 'b0;
-      assign hwlp_end_o     = 'b0;
-      assign hwlp_cnt_o     = 'b0;
-      assign hwlp_valid     = 'b0;
-      assign hwlp_we_masked = 'b0;
-      assign hwlp_start     = 'b0;
-      assign hwlp_end       = 'b0;
-      assign hwlp_cnt       = 'b0;
-      assign hwlp_regid     = 'b0;
-
-    end
-  endgenerate
+  assign hwlp_start_o   = 'b0;
+  assign hwlp_end_o     = 'b0;
+  assign hwlp_cnt_o     = 'b0;
+  assign hwlp_valid     = 'b0;
+  assign hwlp_we_masked = 'b0;
+  assign hwlp_start     = 'b0;
+  assign hwlp_end       = 'b0;
+  assign hwlp_cnt       = 'b0;
+  assign hwlp_regid     = 'b0;
 
 
   /////////////////////////////////////////////////////////////////////////////////
@@ -1760,65 +1663,59 @@ module cv32e40p_id_stage
     end
   endgenerate
 
-  generate
-    if (!COREV_PULP) begin : gen_no_pulp_xpulp_assertions
+  // Check that PULP extension opcodes are decoded as illegal when PULP extension is not enabled
+  property p_illegal_1;
+    @(posedge clk) disable iff (!rst_n) ((instr[6:0] == OPCODE_CUSTOM_0) || (instr[6:0] == OPCODE_CUSTOM_1) ||
+                                          (instr[6:0] == OPCODE_CUSTOM_2) || (instr[6:0] == OPCODE_CUSTOM_3))
+                                      |-> (illegal_insn_dec == 'b1);
+  endproperty
 
-      // Check that PULP extension opcodes are decoded as illegal when PULP extension is not enabled
-      property p_illegal_1;
-        @(posedge clk) disable iff (!rst_n) ((instr[6:0] == OPCODE_CUSTOM_0) || (instr[6:0] == OPCODE_CUSTOM_1) ||
-                                             (instr[6:0] == OPCODE_CUSTOM_2) || (instr[6:0] == OPCODE_CUSTOM_3))
-                                            |-> (illegal_insn_dec == 'b1);
-      endproperty
+  a_illegal_1 :
+  assert property (p_illegal_1);
 
-      a_illegal_1 :
-      assert property (p_illegal_1);
+  // Check that certain ALU operations are not used when PULP extension is not enabled
+  property p_alu_op;
+    @(posedge clk) disable iff (!rst_n) (1'b1) |-> ( (alu_operator != ALU_ADDU ) && (alu_operator != ALU_SUBU ) &&
+                                                     (alu_operator != ALU_ADDR ) && (alu_operator != ALU_SUBR ) &&
+                                                     (alu_operator != ALU_ADDUR) && (alu_operator != ALU_SUBUR) &&
+                                                     (alu_operator != ALU_ROR) && (alu_operator != ALU_BEXT) &&
+                                                     (alu_operator != ALU_BEXTU) && (alu_operator != ALU_BINS) &&
+                                                     (alu_operator != ALU_BCLR) && (alu_operator != ALU_BSET) &&
+                                                     (alu_operator != ALU_BREV) && (alu_operator != ALU_FF1) &&
+                                                     (alu_operator != ALU_FL1) && (alu_operator != ALU_CNT) &&
+                                                     (alu_operator != ALU_CLB) && (alu_operator != ALU_EXTS) &&
+                                                     (alu_operator != ALU_EXT) && (alu_operator != ALU_LES) &&
+                                                     (alu_operator != ALU_LEU) && (alu_operator != ALU_GTS) &&
+                                                     (alu_operator != ALU_GTU) && (alu_operator != ALU_SLETS) &&
+                                                     (alu_operator != ALU_SLETU) && (alu_operator != ALU_ABS) &&
+                                                     (alu_operator != ALU_CLIP) && (alu_operator != ALU_CLIPU) &&
+                                                     (alu_operator != ALU_INS) && (alu_operator != ALU_MIN) &&
+                                                     (alu_operator != ALU_MINU) && (alu_operator != ALU_MAX) &&
+                                                     (alu_operator != ALU_MAXU) && (alu_operator != ALU_SHUF) &&
+                                                     (alu_operator != ALU_SHUF2) && (alu_operator != ALU_PCKLO) &&
+                                                     (alu_operator != ALU_PCKHI) );
+  endproperty
 
-      // Check that certain ALU operations are not used when PULP extension is not enabled
-      property p_alu_op;
-        @(posedge clk) disable iff (!rst_n) (1'b1) |-> ( (alu_operator != ALU_ADDU ) && (alu_operator != ALU_SUBU ) &&
-                                                           (alu_operator != ALU_ADDR ) && (alu_operator != ALU_SUBR ) &&
-                                                           (alu_operator != ALU_ADDUR) && (alu_operator != ALU_SUBUR) &&
-                                                           (alu_operator != ALU_ROR) && (alu_operator != ALU_BEXT) &&
-                                                           (alu_operator != ALU_BEXTU) && (alu_operator != ALU_BINS) &&
-                                                           (alu_operator != ALU_BCLR) && (alu_operator != ALU_BSET) &&
-                                                           (alu_operator != ALU_BREV) && (alu_operator != ALU_FF1) &&
-                                                           (alu_operator != ALU_FL1) && (alu_operator != ALU_CNT) &&
-                                                           (alu_operator != ALU_CLB) && (alu_operator != ALU_EXTS) &&
-                                                           (alu_operator != ALU_EXT) && (alu_operator != ALU_LES) &&
-                                                           (alu_operator != ALU_LEU) && (alu_operator != ALU_GTS) &&
-                                                           (alu_operator != ALU_GTU) && (alu_operator != ALU_SLETS) &&
-                                                           (alu_operator != ALU_SLETU) && (alu_operator != ALU_ABS) &&
-                                                           (alu_operator != ALU_CLIP) && (alu_operator != ALU_CLIPU) &&
-                                                           (alu_operator != ALU_INS) && (alu_operator != ALU_MIN) &&
-                                                           (alu_operator != ALU_MINU) && (alu_operator != ALU_MAX) &&
-                                                           (alu_operator != ALU_MAXU) && (alu_operator != ALU_SHUF) &&
-                                                           (alu_operator != ALU_SHUF2) && (alu_operator != ALU_PCKLO) &&
-                                                           (alu_operator != ALU_PCKHI) );
-      endproperty
+  a_alu_op :
+  assert property (p_alu_op);
 
-      a_alu_op :
-      assert property (p_alu_op);
+  // Check that certain vector modes are not used when PULP extension is not enabled
+  property p_vector_mode;
+    @(posedge clk) disable iff (!rst_n) (1'b1) |-> ( (alu_vec_mode != VEC_MODE8 ) && (alu_vec_mode != VEC_MODE16 ) );
+  endproperty
 
-      // Check that certain vector modes are not used when PULP extension is not enabled
-      property p_vector_mode;
-        @(posedge clk) disable iff (!rst_n) (1'b1) |-> ( (alu_vec_mode != VEC_MODE8 ) && (alu_vec_mode != VEC_MODE16 ) );
-      endproperty
+  a_vector_mode :
+  assert property (p_vector_mode);
 
-      a_vector_mode :
-      assert property (p_vector_mode);
+  // Check that certain multiplier operations are not used when PULP extension is not enabled
+  property p_mul_op;
+    @(posedge clk) disable iff (!rst_n) (mult_int_en == 1'b1) |-> ( (mult_operator != MUL_MSU32) && (mult_operator != MUL_I) &&
+                                                                    (mult_operator != MUL_IR) && (mult_operator != MUL_DOT8) &&
+                                                                    (mult_operator != MUL_DOT16) );
+  endproperty
 
-      // Check that certain multiplier operations are not used when PULP extension is not enabled
-      property p_mul_op;
-        @(posedge clk) disable iff (!rst_n) (mult_int_en == 1'b1) |-> ( (mult_operator != MUL_MSU32) && (mult_operator != MUL_I) &&
-                                                                         (mult_operator != MUL_IR) && (mult_operator != MUL_DOT8) &&
-                                                                         (mult_operator != MUL_DOT16) );
-      endproperty
-
-      a_mul_op :
-      assert property (p_mul_op);
-
-    end
-  endgenerate
+  a_mul_op :
+  assert property (p_mul_op);
 
   // Check that illegal instruction has no other side effects
   property p_illegal_2;

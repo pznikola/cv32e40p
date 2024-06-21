@@ -26,7 +26,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 module cv32e40p_if_stage #(
-    parameter COREV_PULP = 0, // PULP ISA Extension (including PULP specific CSRs and hardware loop, excluding cv.elw)
     parameter PULP_OBI = 0,  // Legacy PULP OBI behavior
     parameter PULP_SECURE = 0,
     parameter FPU = 0,
@@ -177,8 +176,7 @@ module cv32e40p_if_stage #(
 
   // prefetch buffer, caches a fixed number of instructions
   cv32e40p_prefetch_buffer #(
-      .PULP_OBI  (PULP_OBI),
-      .COREV_PULP(COREV_PULP)
+      .PULP_OBI  (PULP_OBI)
   ) prefetch_buffer_i (
       .clk  (clk),
       .rst_n(rst_n),
@@ -286,19 +284,13 @@ module cv32e40p_if_stage #(
 
 `ifdef CV32E40P_ASSERT_ON
 
-  generate
-    if (!COREV_PULP) begin : gen_no_pulp_xpulp_assertions
+  // Check that PC Mux cannot select Hardware Loop address iF PULP extensions are not included
+  property p_pc_mux_0;
+    @(posedge clk) disable iff (!rst_n) (1'b1) |-> (pc_mux_i != PC_HWLOOP);
+  endproperty
 
-      // Check that PC Mux cannot select Hardware Loop address iF PULP extensions are not included
-      property p_pc_mux_0;
-        @(posedge clk) disable iff (!rst_n) (1'b1) |-> (pc_mux_i != PC_HWLOOP);
-      endproperty
-
-      a_pc_mux_0 :
-      assert property (p_pc_mux_0);
-
-    end
-  endgenerate
+  a_pc_mux_0 :
+  assert property (p_pc_mux_0);
 
   generate
     if (!PULP_SECURE) begin : gen_no_pulp_secure_assertions
